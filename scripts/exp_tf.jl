@@ -18,7 +18,7 @@ CUDA.device!(0)
 
 # untrt and trt
 const data_path = "data/lincs_trt_untrt_data.jld2"
-const save_path_base = "trt_and_untrt"
+const save_path_base = "trt"
 
 # params
 const batch_size = 128
@@ -33,7 +33,7 @@ const mask_ratio = 0.1
 const MASK_VALUE = -1.0f0
 
 # notes
-const server_note = "this was on smaug"
+const gpu_info = "this was on smaug"
 const dataset_note = "trt"
 const additional_notes = "demo run"
 
@@ -547,7 +547,7 @@ run_minutes = rem(total_minutes, 60)
 params_txt = joinpath(save_dir, "params.txt")
 open(params_txt, "w") do io
     println(io, "PARAMETERS:")
-    println(io, "########### $(server_note)")
+    println(io, "########### $(gpu_info)")
     println(io, "dataset = $(dataset_note)")
     println(io, "masking_ratio = $mask_ratio")
     println(io, "mask_value = $MASK_VALUE")
