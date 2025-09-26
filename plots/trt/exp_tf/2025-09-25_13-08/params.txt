@@ -1,0 +1,19 @@
+PARAMETERS:
+########### this was on smaug
+dataset = trt
+masking_ratio = 0.1
+mask_value = -1.0
+NO DYNAMIC MASKING
+batch_size = 128
+n_epochs = 30
+embed_dim = 128
+hidden_dim = 256
+n_heads = 2
+n_layers = 4
+learning_rate = 0.001
+dropout_probability = 0.05
+ADDITIONAL NOTES: big run!
+run_time = 110 hours and 29 minutes
+correlation = 0.9650899
+mse model = 0.3574042
+mse baseline = 1.8414176

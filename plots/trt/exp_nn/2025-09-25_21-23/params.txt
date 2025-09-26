@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 512
+n_epochs = 30
+embed_dim = 128
+hidden_dim = 256
+mid_dim = 64
+latent_dim = 32
+learning_rate = 0.001
+ADDITIONAL NOTES: trying with trt and untrt data, 30ep
+run_time = 0 hours and 6 minutes
+correlation = 0.99977314

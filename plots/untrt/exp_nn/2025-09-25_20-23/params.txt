@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on kraken
+dataset = untrt
+masking_ratio = 0.5
+mask_value = 0.0
+batch_size = 128
+n_epochs = 30
+embed_dim = 256
+hidden_dim = 512
+mid_dim = 128
+latent_dim = 64
+learning_rate = 0.001
+ADDITIONAL NOTES: added normalization
+run_time = 0 hours and 2 minutes
+correlation = 0.9903379
