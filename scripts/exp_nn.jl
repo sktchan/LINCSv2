@@ -35,32 +35,7 @@ const lr = 0.001
 # notes
 const gpu_info = "this was on kraken"
 const dataset_note = "trt"
-const additional_notes = "trying with trt and untrt data, 30ep"
-
-# # untrt only
-# data_path = "data/lincs_untrt_data.jld2"
-# save_path_base = "untrt"
-
-# # untrt and trt
-# # data_path = "data/lincs_trt_untrt_data.jld2"
-# # save_path_base = "trt"
-
-# # params
-# constbatch_size = 64
-# n_epochs = 10
-# embed_dim = 128
-# hidden_dim = 256
-# mid_dim = 64
-# latent_dim = 32
-# mask_ratio = 0.1f0
-# mask_value = 0.0f0
-# lr = 0.001
-# # drop_prob = 0.05
-
-# # notes
-# gpu_info = "this was on kraken"
-# dataset_note = "untrt"
-# additional_notes = "demo run"
+const additional_notes = "added additional plotting for comparison with exp tf"
 
 #######################################################################################################################################
 ### DATA
@@ -337,7 +312,7 @@ function loss(model::Model, x, mode::String)
         return error
     end
     if mode == "test"
-        return error, preds_masked, trues_masked
+        return error, preds_masked, trues_masked, trues
     end
 end
 
@@ -345,6 +320,7 @@ train_losses = Float32[]
 test_losses = Float32[]
 all_preds = Float32[]
 all_trues = Float32[]
+all_gene_indices = Int[]
 
 for epoch in ProgressBar(1:n_epochs)
     train_epoch_losses = Float32[]
@@ -366,12 +342,17 @@ for epoch in ProgressBar(1:n_epochs)
         end_idx = min(start_idx + batch_size - 1, size(X_test, 2))
         x_gpu = gpu(X_test[:, start_idx:end_idx])
 
-        test_loss_val, preds_masked, trues_masked = loss(model, x_gpu, "test")
+        test_loss_val, preds_masked, trues_masked, trues_full = loss(model, x_gpu, "test")
         push!(test_epoch_losses, test_loss_val)
 
         if epoch == n_epochs
             append!(all_preds, cpu(preds_masked))
             append!(all_trues, cpu(trues_masked))
+
+            trues_cpu = cpu(trues_full)
+            masked_indices = findall(!isnan, trues_cpu)
+            batch_gene_indices = [idx[1] for idx in masked_indices]
+            append!(all_gene_indices, batch_gene_indices)
         end
     end
     push!(test_losses, mean(test_epoch_losses))
@@ -402,6 +383,129 @@ axislegend(ax_loss, position=:rt)
 display(fig_loss)
 save(joinpath(save_dir, "loss.png"), fig_loss)
 
+### boxplot and histogram combined
+
+min_val = minimum(all_trues)
+max_val = maximum(all_trues)
+
+# define bins
+# bin_edges = min_val:0.005:max_val
+n_bins = 15
+bin_edges = range(min_val, max_val, length=n_bins + 1)
+bin_midpts = (bin_edges[1:end-1] .+ bin_edges[2:end]) ./ 2
+
+stats = Dict()
+x_outliers = Float32[]
+y_outliers = Float32[]
+grouped_preds = Float32[]
+grouped_trues_midpts = Float64[]
+
+for (i, midpt) in enumerate(bin_midpts) # for each bin
+    ind = findall(x -> bin_edges[i] <= x < bin_edges[i+1], all_trues)
+    if !isempty(ind)
+        bin_preds = all_preds[ind]
+        append!(grouped_preds, bin_preds)
+        append!(grouped_trues_midpts, fill(midpt, length(bin_preds)))
+
+        q10 = quantile(bin_preds, 0.10)
+        q25 = quantile(bin_preds, 0.25)
+        q50 = quantile(bin_preds, 0.50)
+        q75 = quantile(bin_preds, 0.75)
+        q90 = quantile(bin_preds, 0.90)
+
+        stats[midpt] = (q10=q10, q25=q25, q50=q50, q75=q75, q90=q90)
+        outlier_ind = findall(y -> y < q10 || y > q90, bin_preds)
+        append!(x_outliers, fill(midpt, length(outlier_ind)))
+        append!(y_outliers, bin_preds[outlier_ind])
+    end
+end
+
+midpts_plot = collect(keys(stats))
+q10s = [s.q10 for s in values(stats)]
+q25s = [s.q25 for s in values(stats)]
+q50s = [s.q50 for s in values(stats)]
+q75s = [s.q75 for s in values(stats)]
+q90s = [s.q90 for s in values(stats)] 
+
+begin
+    # setup
+    fig_boxhist = Figure(size = (800, 800))
+    ax_box = Axis(fig_boxhist[1, 1],
+        xlabel="",
+        ylabel="predicted embedding value",
+        title="predicted vs. true embedding values"
+    )
+    ax_hist = Axis(fig_boxhist[2, 1],
+        xlabel="true embedding value",
+        ylabel="count",
+        title="distribution of true embedding values",
+        # xticks = 0:5:15,
+    )
+    linkxaxes!(ax_box, ax_hist)
+
+    # boxplot
+    scatter!(ax_box, x_outliers, y_outliers, markersize = 5, alpha = 0.5)
+    rangebars!(ax_box, midpts_plot, q10s, q25s, color = :black, whiskerwidth = 0.5)
+    rangebars!(ax_box, midpts_plot, q75s, q90s, color = :black, whiskerwidth = 0.5)
+    boxplot!(ax_box, grouped_trues_midpts, grouped_preds, range = false, whiskerlinewidth = 0, show_outliers = false, width = 0.005)
+
+    # histogram
+    hist!(ax_hist, all_trues, bins = bin_edges, strokecolor = :black, strokewidth = 1)
+    rowgap!(fig_boxhist.layout, 1, 10)
+    display(fig_boxhist)
+    # save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
+end
+
+### plot hexbin
+fig_hex = Figure(size = (800, 600))
+ax_hex = Axis(fig_hex[1, 1],
+    xlabel="true embedding val",
+    ylabel="predicted embedding val",
+    title="predicted vs. true embedding density"
+    # aspect=DataAspect() 
+)
+hexplot = hexbin!(ax_hex, all_trues, all_preds)
+Colorbar(fig_hex[1, 2], hexplot, label="point count")
+# display(fig_hex)
+save(joinpath(save_dir, "hexbin.png"), fig_hex)
+
+### error by gene analysis
+absolute_errors = abs.(all_trues .- all_preds)
+df_gene_errors = DataFrame(gene_index = all_gene_indices, absolute_error = absolute_errors)
+
+# for all pred errors
+begin
+    fig_gene_error_scatter = Figure(size = (800, 600))
+    ax_gene_error_scatter = Axis(fig_gene_error_scatter[1, 1], title = "prediction error by gene", xlabel = "gene index", ylabel = "absolute prediction error")
+    scatter!(ax_gene_error_scatter, all_gene_indices, absolute_errors, alpha=0.5)
+    display(fig_gene_error_scatter)
+    save(joinpath(save_dir, "gene_vs_error_scatter.png"), fig_gene_error_scatter)
+end
+
+# for mean pred error
+df_mean_error = combine(groupby(df_gene_errors, :gene_index), :absolute_error => mean => :mean_absolute_error)
+begin
+    fig_gene_meanerror = Figure(size = (800, 600))
+    ax_gene_meanerror= Axis(fig_gene_meanerror[1, 1], title = "mean absolute error by gene", xlabel = "gene index", ylabel = "mean error")
+    scatter!(ax_gene_meanerror, df_mean_error.gene_index, df_mean_error.mean_absolute_error, alpha=0.5)
+    display(fig_gene_meanerror)
+    save(joinpath(save_dir, "gene_vs_meanerror.png"), fig_gene_meanerror)
+end
+
+# for sorted indices
+sorted_indices_by_mean = load("/home/golem/scratch/chans/lincs/plots/trt_and_untrt/infographs/sorted_gene_indices_by_exp.jld2")["sorted_indices_by_mean"]
+error_map = Dict(row.gene_index => row.mean_absolute_error for row in eachrow(df_mean_error))
+sorted_mean_errors = [get(error_map, idx, 0) for idx in sorted_indices_by_mean]
+gene_ranks = 1:length(sorted_indices_by_mean)
+
+begin
+    fig_sort_error = Figure(size = (800, 600))
+    ax_sort_error = Axis(fig_sort_error[1, 1], xlabel = "sorted gene index", ylabel = "mean error", title = "mean absolute error by sorted gene")
+    scatter!(ax_sort_error, gene_ranks, sorted_mean_errors, alpha = 0.5)
+    display(fig_sort_error)
+    save(joinpath(save_dir, "sorted_gene_vs_meanerror.png"), fig_sort_error)
+end
+
 #######################################################################################################################################
 ### LOG
 #######################################################################################################################################
@@ -418,8 +522,8 @@ jldsave(joinpath(save_dir, "losses.jld2");
 )
 jldsave(joinpath(save_dir, "predstrues.jld2"); 
     all_preds = all_preds, 
-    all_trues = all_trues
-    # all_gene_indices = all_gene_indices
+    all_trues = all_trues,
+    all_gene_indices = all_gene_indices
 )
 jldsave(joinpath(save_dir, "test_data.jld2"); X=X_test)
 

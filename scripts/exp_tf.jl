@@ -370,10 +370,10 @@ for start_idx in 1:batch_size:size(X_test_masked, 2)
     _, preds_masked, y_masked = loss(model, x_gpu, y_gpu, "test")
 
     # for calculating predicted error per gene
-    y_cpu_batch = cpu(y_gpu)
-    masked_indices_cartesian = findall(!isnan, y_cpu_batch)
-    original_gene_indices = [idx[1] for idx in masked_indices_cartesian]
-    append!(all_gene_indices, original_gene_indices)
+    y_cpu = cpu(y_gpu)
+    masked_indices = findall(!isnan, y_cpu)
+    batch_gene_indices = [idx[1] for idx in masked_indices]
+    append!(all_gene_indices, batch_gene_indices)
 
     append!(all_preds, cpu(preds_masked))
     append!(all_trues, cpu(y_masked))
@@ -468,6 +468,7 @@ save(joinpath(save_dir, "hexbin.png"), fig_hex)
 absolute_errors = abs.(all_trues .- all_preds)
 df_gene_errors = DataFrame(gene_index = all_gene_indices, absolute_error = absolute_errors)
 
+# for all pred errors
 begin
     fig_gene_error_scatter = Figure(size = (800, 600))
     ax_gene_error_scatter = Axis(fig_gene_error_scatter[1, 1], title = "prediction error by gene", xlabel = "gene index", ylabel = "absolute prediction error")
@@ -476,6 +477,7 @@ begin
     save(joinpath(save_dir, "gene_vs_error_scatter.png"), fig_gene_error_scatter)
 end
 
+# for mean pred error
 df_mean_error = combine(groupby(df_gene_errors, :gene_index), :absolute_error => mean => :mean_absolute_error)
 begin
     fig_gene_meanerror = Figure(size = (800, 600))
@@ -485,21 +487,18 @@ begin
     save(joinpath(save_dir, "gene_vs_meanerror.png"), fig_gene_meanerror)
 end
 
-try
-    sorted_indices_by_mean = load("/home/golem/scratch/chans/lincs/plots/trt_and_untrt/infographs/sorted_gene_indices_by_exp.jld2")["sorted_indices_by_mean"]
-    error_map = Dict(row.gene_index => row.mean_absolute_error for row in eachrow(df_mean_error))
-    sorted_mean_errors = [get(error_map, idx, 0) for idx in sorted_indices_by_mean]
-    gene_ranks = 1:length(sorted_indices_by_mean)
+# for sorted indices
+sorted_indices_by_mean = load("/home/golem/scratch/chans/lincs/plots/trt_and_untrt/infographs/sorted_gene_indices_by_exp.jld2")["sorted_indices_by_mean"]
+error_map = Dict(row.gene_index => row.mean_absolute_error for row in eachrow(df_mean_error))
+sorted_mean_errors = [get(error_map, idx, 0) for idx in sorted_indices_by_mean]
+gene_ranks = 1:length(sorted_indices_by_mean)
 
-    begin
-        fig_sort_error = Figure(size = (800, 600))
-        ax_sort_error = Axis(fig_sort_error[1, 1], xlabel = "sorted gene index", ylabel = "mean error", title = "mean absolute error by sorted gene")
-        scatter!(ax_sort_error, gene_ranks, sorted_mean_errors, alpha = 0.5)
-        display(fig_sort_error)
-        save(joinpath(save_dir, "sorted_gene_vs_meanerror.png"), fig_sort_error)
-    end
-catch e
-    println("Could not load sorted gene indices file. Skipping sorted error plot. Error: $e")
+begin
+    fig_sort_error = Figure(size = (800, 600))
+    ax_sort_error = Axis(fig_sort_error[1, 1], xlabel = "sorted gene index", ylabel = "mean error", title = "mean absolute error by sorted gene")
+    scatter!(ax_sort_error, gene_ranks, sorted_mean_errors, alpha = 0.5)
+    display(fig_sort_error)
+    save(joinpath(save_dir, "sorted_gene_vs_meanerror.png"), fig_sort_error)
 end
 
 
