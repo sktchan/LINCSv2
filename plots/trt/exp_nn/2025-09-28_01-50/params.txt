@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 512
+n_epochs = 30
+embed_dim = 128
+hidden_dim = 256
+mid_dim = 64
+latent_dim = 32
+learning_rate = 0.001
+ADDITIONAL NOTES: added additional plotting for comparison with exp tf
+run_time = 0 hours and 10 minutes
+correlation = 1.0
