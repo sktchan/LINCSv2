@@ -35,7 +35,7 @@ const lr = 0.001
 # notes
 const gpu_info = "this was on kraken"
 const dataset_note = "trt"
-const additional_notes = "moved layernorm from first FNN to encoder to match ranked model"
+const additional_notes = "30ep with fixed layernorm"
 
 #######################################################################################################################################
 ### DATA
@@ -122,12 +122,21 @@ end
 #     return X_masked, mask_labels
 # end
 
+### changed to this masking function since masking is done on gpu within the model fxn, not cpu beforehand (as prev in tf file)
 function (m::Mask)(x::AbstractMatrix{Float32})
     # random boolean mask for entire matrix for what to mask
+        # rand_like: all element of the new array will be set to a random value. 
+        # .< mask_ratio: if value is < mask ratio, then it is marked as true
     mask_indices = rand_like(x) .< m.mask_ratio
 
     # place mask on data
+        # if true, places mask_value into the new matrix
+        # if false, it copies the original value from x
     X_masked = ifelse.(mask_indices, m.mask_value, x)
+
+    # get masked labels
+        # if true, gets original value from x
+        # if false, it puts NaN32 to skip over in loss
     mask_labels = ifelse.(mask_indices, x, NaN32)
 
     return X_masked, mask_labels
@@ -180,8 +189,6 @@ function Decoder(
 
     reconstruct = Flux.Chain(
         Flux.Dense(latent_dim => mid_dim),
-        LayerNorm(mid_dim),
-        relu,
         Flux.Dense(mid_dim => embed_dim)
     )
 
@@ -217,8 +224,8 @@ function Model(;
 
     mlp = Flux.Chain(
         Dense(num_genes => hidden_dim, relu),
-        # LayerNorm(hidden_dim),
-        # relu,
+        LayerNorm(hidden_dim),
+        relu,
         # Dropout(0.1),
         Dense(hidden_dim => embed_dim) # softplus?
     )
@@ -438,14 +445,17 @@ begin
     scatter!(ax_box, x_outliers, y_outliers, markersize = 5, alpha = 0.5)
     rangebars!(ax_box, midpts_plot, q10s, q25s, color = :black, whiskerwidth = 0.5)
     rangebars!(ax_box, midpts_plot, q75s, q90s, color = :black, whiskerwidth = 0.5)
-    boxplot!(ax_box, grouped_trues_midpts, grouped_preds, range = false, whiskerlinewidth = 0, show_outliers = false, width = 0.0005)
+    boxplot!(ax_box, grouped_trues_midpts, grouped_preds, range = false, whiskerlinewidth = 0, show_outliers = false, width = 0.05)
 
     # histogram
     hist!(ax_hist, all_trues, bins = bin_edges, strokecolor = :black, strokewidth = 1)
     rowgap!(fig_boxhist.layout, 1, 10)
-    display(fig_boxhist)
-    # save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
+    # display(fig_boxhist)
+    save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
 end
+
+# save_dir = "/home/golem/scratch/chans/lincsv2/plots/trt/exp_nn/2025-09-30_11-58"
+# save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
 
 ### plot hexbin
 fig_hex = Figure(size = (800, 600))

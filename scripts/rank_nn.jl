@@ -35,7 +35,7 @@ const lr = 0.001
 # notes
 const gpu_info = "this was on kraken"
 const dataset_note = "trt"
-const additional_notes = "added layernorm"
+const additional_notes = "moving layernorm to immediately after the embedding step"
 
 #######################################################################################################################################
 ### DATA
@@ -121,9 +121,7 @@ function Encoder(
     noise = Mask(mask_ratio, mask_value)
 
     compress = Flux.Chain(
-        Flux.Dense(embed_dim => mid_dim),
-        LayerNorm(mid_dim),
-        relu,
+        Flux.Dense(embed_dim => mid_dim, relu),
         Flux.Dense(mid_dim => latent_dim)
     )
 
@@ -168,6 +166,7 @@ end
 
 struct Model
     embedding::Flux.Embedding
+    norm::Flux.LayerNorm
     encoder::Encoder
     decoder::Decoder
     # mlp_head::Flux.Chain
@@ -195,6 +194,8 @@ function Model(;
 
     embedding = Flux.Embedding(num_genes => embed_dim)
 
+    norm = Flux.LayerNorm(embed_dim)
+
     encoder = Encoder(embed_dim, mid_dim, latent_dim, mask_ratio, mask_value)
 
     decoder = Decoder(embed_dim, mid_dim, latent_dim)
@@ -203,7 +204,7 @@ function Model(;
     #     Dense(embed_dim => num_genes)
     # )
 
-    return Model(embedding, encoder, decoder)
+    return Model(embedding, norm, encoder, decoder)
 end
 
 Flux.@functor Model
@@ -213,8 +214,10 @@ function (model::Model)(input::IntMatrix2DType)
     # embedded_flat = Flux.flatten(embedded) # flatten into (embed_dim * num_genes, batch_size) OR change encoder input to Float32Matrix3DType?
     pooled = mean(embedded, dims=2) # mean pool into (128, 1, batch_size) for input into encoder... is this proper?
     final_emb = dropdims(pooled, dims=2) # (128, batch_size)
+
+    normed = model.norm(final_emb) # normalize here?
     
-    latent, labels = model.encoder(final_emb)
+    latent, labels = model.encoder(normed)
     recon_embed = model.decoder(latent)
     return recon_embed, labels
 end
@@ -413,14 +416,17 @@ begin
     scatter!(ax_box, x_outliers, y_outliers, markersize = 5, alpha = 0.5)
     rangebars!(ax_box, midpts_plot, q10s, q25s, color = :black, whiskerwidth = 0.5)
     rangebars!(ax_box, midpts_plot, q75s, q90s, color = :black, whiskerwidth = 0.5)
-    boxplot!(ax_box, grouped_trues_midpts, grouped_preds, range = false, whiskerlinewidth = 0, show_outliers = false, width = 0.0005)
+    boxplot!(ax_box, grouped_trues_midpts, grouped_preds, range = false, whiskerlinewidth = 0, show_outliers = false, width = 0.2)
 
     # histogram
     hist!(ax_hist, all_trues, bins = bin_edges, strokecolor = :black, strokewidth = 1)
     rowgap!(fig_boxhist.layout, 1, 10)
-    # display(fig_boxhist)
-    save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
+    display(fig_boxhist)
+    # save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
 end
+
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/trt/rank_nn/2025-09-30_11-58"
+save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
 
 ### plot hexbin
 fig_hex = Figure(size = (800, 600))
