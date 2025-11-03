@@ -24,7 +24,7 @@ const save_path_base = "trt"
 
 # params
 const batch_size = 128
-const n_epochs = 1
+const n_epochs =30
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
@@ -36,7 +36,7 @@ const mask_ratio = 0.1
 # notes
 const gpu_info = "this was on smaug"
 const dataset_note = "trt"
-const additional_notes = "demo run"
+const additional_notes = "demo run 1ep with cls token"
 
 #######################################################################################################################################
 ### DATA
@@ -64,8 +64,15 @@ end
 
 @time X = sort_gene(data.expr) # lookup table of indices from highest rank to lowest rank gene
 
-const n_features = size(X, 1) + 1
+const n_features = size(X, 1) + 2
 const n_classes = size(X, 1)
+const n_genes = size(X, 1)
+const MASK_ID = (n_classes + 1)
+const CLS_ID = n_genes + 2
+const CLS_VECTOR = fill(CLS_ID, (1, size(X, 2)))
+X = vcat(CLS_VECTOR, X)
+
+
 
 #######################################################################################################################################
 ### MODEL
@@ -207,26 +214,40 @@ function split_data(X, test_ratio::Float64, y=nothing) # masking doesn't need y!
     X_train = X[:, train_indices]
     X_test = X[:, test_indices]
     if y === nothing
-        return X_train, X_test
+        return X_train, X_test, train_indices, test_indices
     else
         y_train = y[train_indices]
         y_test = y[test_indices]
-        return X_train, y_train, X_test, y_test
+        return X_train, y_train, X_test, y_test, train_indices, test_indices
     end
 end
 
-X_train, X_test = split_data(X, 0.2)
+X_train, X_test, train_indices, test_indices = split_data(X, 0.2)
 
 ### masking data
-const MASK_ID = (n_classes + 1)
+# function mask_input(X::Matrix{Int64}; mask_ratio=mask_ratio)
+#     X_masked = copy(X)
+#     mask_labels = fill((-100), size(X)) # -100 = ignore, this is not masked
+#     for j in 1:size(X,2) # per column
+#         num_masked = ceil(Int, size(X,1) * mask_ratio)
+#         mask_positions = randperm(size(X,1))[1:num_masked]
+#         for pos in mask_positions
+#             mask_labels[pos, j] = X[pos, j] # original label
+#             X_masked[pos, j] = MASK_ID # mask label
+#         end
+#     end
+#     return X_masked, mask_labels
+# end
 
-function mask_input(X::Matrix{Int64}; mask_ratio=mask_ratio)
+function mask_input(X::Matrix{Int}; mask_ratio=mask_ratio)
     X_masked = copy(X)
     mask_labels = fill((-100), size(X)) # -100 = ignore, this is not masked
-    for j in 1:size(X,2) # per column
-        num_masked = ceil(Int, size(X,1) * mask_ratio)
-        mask_positions = randperm(size(X,1))[1:num_masked]
-        for pos in mask_positions
+    for j in 1:size(X,2) # per column, start at second row so we don't mask CLS token
+        num_masked = ceil(Int, (size(X,1) - 1) * mask_ratio)
+        mask_positions_local = randperm(size(X,1) - 1)[1:num_masked]
+        mask_positions_global = mask_positions_local .+ 1 # also shifted for CLS token
+        
+        for pos in mask_positions_global
             mask_labels[pos, j] = X[pos, j] # original label
             X_masked[pos, j] = MASK_ID # mask label
         end
@@ -359,7 +380,7 @@ end
 
 # mk dir
 timestamp = Dates.format(now(), "yyyy-mm-dd_HH-MM")
-save_dir = joinpath("plots", save_path_base, "rank_mask", timestamp)
+save_dir = joinpath("plots", save_path_base, "rank_tf", timestamp)
 mkpath(save_dir)
 
 # loss plot
@@ -429,7 +450,51 @@ model_cpu = cpu(model)
 jldsave(joinpath(save_dir, "model_object.jld2"); model=model_cpu)
 jldsave(joinpath(save_dir, "model_state.jld2"); model_state=Flux.state(model_cpu))
 
-# log data
+# # get profile embeddings
+# function get_profile_embedding(model::Model, input::IntMatrix2DType)
+#     embedded = model.embedding(input)
+#     encoded = model.pos_encoder(embedded)
+#     encoded_dropped = model.pos_dropout(encoded)
+#     transformed = model.transformer(encoded_dropped)
+#     cls_embedding = transformed[:, 1, :]
+#     return cls_embedding
+# end
+
+# Flux.testmode!(model)
+# input_batch = gpu(X_test[:, 1:batch_size])
+# profile_embeddings = get_profile_embedding(model, input_batch) # expected (128, 128) for a batch_size of 128
+
+model_cpu = cpu(model)
+model_state = Flux.state(model_cpu)
+
+function get_profile_embedding(m, input)
+    transformed = m.transformer(m.pos_dropout(m.pos_encoder(m.embedding(input))))
+    return transformed[:, 1, :] # Assuming [CLS] token is at position 1
+end
+
+all_embeddings = []
+Flux.testmode!(model)
+for start_idx in 1:batch_size:size(X, 2)
+    end_idx = min(start_idx + batch_size - 1, size(X, 2))
+    input_batch = gpu(X[:, start_idx:end_idx])
+    batch_embeddings = cpu(get_profile_embedding(model, input_batch))
+    push!(all_embeddings, batch_embeddings)
+end
+final_embeddings = hcat(all_embeddings...) 
+
+jldsave(joinpath(save_dir, "model_state.jld2"); 
+    model_state=model_state
+)
+jldsave(joinpath(save_dir, "model_object.jld2"); 
+    model=model_cpu
+)
+jldsave(joinpath(save_dir, "indices.jld2"); 
+    train_indices=train_indices, 
+    test_indices=test_indices
+)
+jldsave(joinpath(save_dir, "profile_embeddings.jld2"); 
+    profile_embeddings=final_embeddings
+)
 jldsave(joinpath(save_dir, "losses.jld2"); 
     epochs = 1:n_epochs, 
     train_losses = train_losses, 
@@ -447,6 +512,9 @@ jldsave(joinpath(save_dir, "avg_errors.jld2");
     original_rank = avg_errors.original_rank,
     avg_error = avg_errors.avg_error
 )
+# jldsave(joinpath(save_dir, "data_expr.jld2"); 
+#     data_expr = data.expr
+# )
 
 # log run info
 end_time = now()

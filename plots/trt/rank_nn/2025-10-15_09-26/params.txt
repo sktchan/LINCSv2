@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 128
+n_epochs = 30
+embed_dim = 128
+latent_1 = 734
+latent_2 = 490
+latent_3 = 246
+learning_rate = 0.001
+ADDITIONAL NOTES: rerun 30ep with fixed saving
+run_time = 1 hours and 27 minutes
+correlation = 0.95830685

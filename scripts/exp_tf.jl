@@ -1,8 +1,8 @@
 using Pkg
 Pkg.activate("/home/golem/scratch/chans/lincs")
 
-using LincsProject, DataFrames, CSV, Dates, JSON, StatsBase, JLD2, SparseArrays, Dates, Printf, Profile
-using Flux, Random, OneHotArrays, CategoricalArrays, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra
+using LincsProject, DataFrames, Dates, StatsBase, JLD2
+using Flux, Random, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra
 
 CUDA.device!(0)
 # GC.gc()
@@ -22,7 +22,7 @@ const save_path_base = "trt"
 
 # params
 const batch_size = 128
-const n_epochs = 1
+const n_epochs = 30
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
@@ -35,7 +35,7 @@ const MASK_VALUE = -1.0f0
 # notes
 const gpu_info = "this was on smaug"
 const dataset_note = "trt"
-const additional_notes = "demo run"
+const additional_notes = "test for re-run w saving indices n converting to rank"
 
 
 #######################################################################################################################################
@@ -63,7 +63,7 @@ const Float32Matrix3DType = Union{Array{Float32}, CuArray{Float32, 3}}
 ### positional encoder
 
 struct PosEnc
-    pe_matrix::CuArray{Float32,2}
+    pe_matrix::Float32Matrix2DType
 end
 
 #!# uses n_genes as max_len directly
@@ -219,7 +219,7 @@ function split_data(X, test_ratio::Float64, y=nothing)
     X_test = X[:, test_indices]
 
     if y === nothing
-        return X_train, X_test
+        return X_train, X_test, test_indices, train_indices
     else
         y_train = y[train_indices]
         y_test = y[test_indices]
@@ -227,7 +227,7 @@ function split_data(X, test_ratio::Float64, y=nothing)
     end
 end
 
-X_train, X_test = split_data(X, 0.2)
+X_train, X_test, test_indices, train_indices = split_data(X, 0.2)
 
 ### masking for raw expression values
 
@@ -343,7 +343,7 @@ end
 
 # mk dir
 timestamp = Dates.format(now(), "yyyy-mm-dd_HH-MM")
-save_dir = joinpath("plots", save_path_base, "exp_mask", timestamp)
+save_dir = joinpath("plots", save_path_base, "exp_tf", timestamp)
 mkpath(save_dir)
 
 # loss plot
@@ -362,6 +362,7 @@ save(joinpath(save_dir, "loss.png"), fig_loss)
 all_preds = Float32[]
 all_trues = Float32[]
 all_gene_indices = Int[]
+all_column_indices = Int[]
 
 for start_idx in 1:batch_size:size(X_test_masked, 2)
     end_idx = min(start_idx + batch_size - 1, size(X_test_masked, 2))
@@ -377,6 +378,10 @@ for start_idx in 1:batch_size:size(X_test_masked, 2)
 
     append!(all_preds, cpu(preds_masked))
     append!(all_trues, cpu(y_masked))
+
+    batch_col_indices = start_idx:end_idx
+    pred_col_indices = [batch_col_indices[idx[2]] for idx in masked_indices]
+    append!(all_column_indices, pred_col_indices)
 end
 
 correlation = cor(all_trues, all_preds)
@@ -516,15 +521,56 @@ hexplot_baseline = hexbin!(ax_baseline_hex, all_trues, baseline_preds)
 Colorbar(fig_baseline_hex[1, 2], hexplot_baseline, label="point count")
 save(joinpath(save_dir, "avg_hexbin.png"), fig_baseline_hex)
 
+### to convert back into ranks for evaluation
+function convert_to_rank(values, ref)
+    combined = vcat(values, ref)
+    p = sortperm(combined, rev=true)
+    ranks = invperm(p)
+    return ranks[1]
+end
+
+reference_matrix = X_test 
+ranked_preds = similar(all_preds, Int)
+ranked_trues = similar(all_trues, Int)
+
+for i in 1:length(all_preds)
+    pred = all_preds[i]
+    true_val = all_trues[i]
+    col_idx = all_column_indices[i]
+    reference_col = reference_matrix[:, col_idx]
+    ranked_preds[i] = convert_to_rank(pred, reference_col)
+    ranked_trues[i] = convert_to_rank(true_val, reference_col)
+end
+
+# heatmap
+bin_edges = 1:979 
+h = fit(Histogram, (ranked_trues, ranked_preds), (bin_edges, bin_edges))
+
+fig_hm = Figure(size = (800, 700))
+ax_hm = Axis(fig_hm[1, 1],
+    xlabel = "true rank",
+    ylabel = "predicted rank"
+)
+
+log10_weights = log10.(h.weights .+ 1)
+hm = heatmap!(ax_hm, h.edges[1], h.edges[2], log10_weights)
+Colorbar(fig_hm[1, 2], hm, label = "count (log10)")
+# display(fig)
+save(joinpath(save_dir, "heatmap.png"), fig_hm)
+
 #######################################################################################################################################
 ### LOG
 #######################################################################################################################################
 
 # save model!!!
 model_cpu = cpu(model)
-jldsave(joinpath(save_dir, "model_object.jld2"); model=model_cpu) # whole model
-jldsave(joinpath(save_dir, "model_state.jld2"); model_state=Flux.state(model_cpu)) # need to recreate model + apply state to load back in
-
+model_state = Flux.state(model_cpu)
+jldsave(joinpath(save_dir, "model_state.jld2"); 
+    model_state=model_state
+)
+jldsave(joinpath(save_dir, "model_object.jld2"); 
+    model=model_cpu
+)
 jldsave(joinpath(save_dir, "losses.jld2"); 
     epochs = 1:n_epochs, 
     train_losses = train_losses, 
@@ -535,7 +581,12 @@ jldsave(joinpath(save_dir, "predstrues.jld2");
     all_trues = all_trues,
     all_gene_indices = all_gene_indices
 )
+jldsave(joinpath(save_dir, "indices.jld2"); 
+    test_indices = test_indices, 
+    train_indices = train_indices
+)
 jldsave(joinpath(save_dir, "masked_test_data.jld2"); X=X_test_masked, y=y_test_masked)
+jldsave(joinpath(save_dir, "test_data.jld2"); X=X_test)
 
 end_time = now()
 run_time = end_time - start_time

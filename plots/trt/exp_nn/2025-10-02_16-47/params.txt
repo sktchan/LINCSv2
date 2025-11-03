@@ -1,0 +1,8 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 512
+n_epochs = 30
+embed_dim = 128

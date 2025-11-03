@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 128
+n_epochs = 1
+embed_dim = 128
+latent_1 = 734
+latent_2 = 490
+latent_3 = 246
+learning_rate = 0.001
+ADDITIONAL NOTES: demo run for genes x samples = ranks b/n -1 and 1 input w/ same arch as exp_nn
+run_time = 0 hours and 58 minutes
+correlation = 0.9526277

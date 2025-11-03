@@ -6,9 +6,9 @@
 
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
-#SBATCH --mem=32G
+#SBATCH --mem-per-gpu=32G
 
 #SBATCH --gres=gpu:V100:1
-#SBATCH --time=2-00:00:00
+#SBATCH --time=7-00:00:00
 
-julia /home/golem/scratch/chans/lincs/scripts/sept20/exp_tf.jl
+julia /home/golem/scratch/chans/lincsv2/scripts/exp_tf.jl

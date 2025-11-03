@@ -21,12 +21,12 @@ const data_path = "data/lincs_trt_untrt_data.jld2"
 const save_path_base = "trt"
 
 # params
-const batch_size = 512
+const batch_size = 1024
 const n_epochs = 30
 const embed_dim = 128
-const hidden_dim = 256
-const mid_dim = 64
-const latent_dim = 32
+const latent_1 = 734
+const latent_2 = 490
+const latent_3 = 246
 const mask_ratio = 0.1f0
 const mask_value = 0.0f0
 const lr = 0.001
@@ -35,7 +35,7 @@ const lr = 0.001
 # notes
 const gpu_info = "this was on kraken"
 const dataset_note = "trt"
-const additional_notes = "30ep with fixed layernorm"
+const additional_notes = "rerun 30ep with fixed hexbin"
 
 #######################################################################################################################################
 ### DATA
@@ -150,9 +150,11 @@ struct Encoder
 end
 
 function Encoder(
+    num_genes::Int,
     embed_dim::Int,
-    mid_dim::Int,
-    latent_dim::Int,
+    latent_1::Int,
+    latent_2::Int,
+    latent_3::Int,
     mask_ratio::Float32,
     mask_value::Float32
     )
@@ -160,8 +162,10 @@ function Encoder(
     noise = Mask(mask_ratio, mask_value)
 
     compress = Flux.Chain(
-        Flux.Dense(embed_dim => mid_dim, relu),
-        Flux.Dense(mid_dim => latent_dim)
+        Flux.Dense(num_genes => latent_1, relu),
+        Flux.Dense(latent_1 => latent_2, relu),
+        Flux.Dense(latent_2 => latent_3, relu),
+        Flux.Dense(latent_3 => embed_dim)
     )
 
     return Encoder(noise, compress)
@@ -183,13 +187,17 @@ end
 
 function Decoder(
     embed_dim::Int,
-    mid_dim::Int,
-    latent_dim::Int
+    num_genes::Int,
+    latent_1::Int,
+    latent_2::Int,
+    latent_3::Int,
     )
 
     reconstruct = Flux.Chain(
-        Flux.Dense(latent_dim => mid_dim),
-        Flux.Dense(mid_dim => embed_dim)
+        Flux.Dense(embed_dim => latent_3, relu),
+        Flux.Dense(latent_3 => latent_2, relu),
+        Flux.Dense(latent_2 => latent_1, relu),
+        Flux.Dense(latent_1 => num_genes)
     )
 
     return Decoder(reconstruct)
@@ -204,7 +212,7 @@ end
 ### full model
 
 struct Model
-    mlp::Flux.Chain
+    # mlp::Flux.Chain
     encoder::Encoder
     decoder::Decoder
     # mlp_head::Flux.Chain
@@ -212,40 +220,34 @@ end
 
 function Model(;
     num_genes::Int,
-    hidden_dim::Int,
     embed_dim::Int,
-    mid_dim::Int,
-    latent_dim::Int,
+    latent_1::Int,
+    latent_2::Int,
+    latent_3::Int,
     mask_ratio::Float32,
     mask_value::Float32
-    # n_classes::Int,
-    # dropout_prob::Float64
     )
 
-    mlp = Flux.Chain(
-        Dense(num_genes => hidden_dim, relu),
-        LayerNorm(hidden_dim),
-        relu,
-        # Dropout(0.1),
-        Dense(hidden_dim => embed_dim) # softplus?
-    )
-
-    encoder = Encoder(embed_dim, mid_dim, latent_dim, mask_ratio, mask_value)
-
-    decoder = Decoder(embed_dim, mid_dim, latent_dim)
-
-    # mlp_head = Flux.Chain(
-    #     Dense(embed_dim => num_genes)
+    # mlp = Flux.Chain(
+    #     Dense(num_genes => hidden_dim, relu),
+    #     LayerNorm(hidden_dim),
+    #     relu,
+    #     # Dropout(0.1),
+    #     Dense(hidden_dim => embed_dim) # softplus?
     # )
 
-    return Model(mlp, encoder, decoder)
+    encoder = Encoder(num_genes, embed_dim, latent_1, latent_2, latent_3, mask_ratio, mask_value)
+
+    decoder = Decoder(embed_dim, num_genes, latent_1, latent_2, latent_3)
+
+    return Model(encoder, decoder)
 end
 
 Flux.@functor Model
 
 function (model::Model)(input::AbstractMatrix{Float32})
-    embedding = model.mlp(input)
-    latent, labels = model.encoder(embedding)
+    # embedding = model.mlp(input)
+    latent, labels = model.encoder(input)
     recon_embed = model.decoder(latent)
     return recon_embed, labels
 end
@@ -268,15 +270,15 @@ function split_data(X, test_ratio::Float64, y=nothing)
     X_test = X[:, test_indices]
 
     if y === nothing
-        return X_train, X_test
+        return X_train, X_test, train_indices, test_indices
     else
         y_train = y[train_indices]
         y_test = y[test_indices]
-        return X_train, y_train, X_test, y_test
+        return X_train, y_train, X_test, y_test, train_indices, test_indices
     end
 end
 
-X_train, X_test = split_data(X, 0.2)
+X_train, X_test, train_indices, test_indices = split_data(X, 0.2)
 
 #######################################################################################################################################
 ### TRAINING
@@ -284,10 +286,10 @@ X_train, X_test = split_data(X, 0.2)
 
 model = Model(
     num_genes=n_genes,
-    hidden_dim=hidden_dim,
     embed_dim=embed_dim,
-    mid_dim=mid_dim,
-    latent_dim=latent_dim,
+    latent_1=latent_1,
+    latent_2=latent_2,
+    latent_3=latent_3,
     mask_ratio=mask_ratio,
     mask_value=mask_value
 ) |> gpu
@@ -319,6 +321,7 @@ test_losses = Float32[]
 all_preds = Float32[]
 all_trues = Float32[]
 all_gene_indices = Int[]
+all_column_indices = Int[]
 
 for epoch in ProgressBar(1:n_epochs)
     train_epoch_losses = Float32[]
@@ -351,6 +354,10 @@ for epoch in ProgressBar(1:n_epochs)
             masked_indices = findall(!isnan, trues_cpu)
             batch_gene_indices = [idx[1] for idx in masked_indices]
             append!(all_gene_indices, batch_gene_indices)
+
+            batch_col_indices = start_idx:end_idx
+            pred_col_indices = [batch_col_indices[idx[2]] for idx in masked_indices]
+            append!(all_column_indices, pred_col_indices)
         end
     end
     push!(test_losses, mean(test_epoch_losses))
@@ -458,17 +465,23 @@ end
 # save(joinpath(save_dir, "box_hist.png"), fig_boxhist)
 
 ### plot hexbin
-fig_hex = Figure(size = (800, 600))
-ax_hex = Axis(fig_hex[1, 1],
-    xlabel="true embedding val",
-    ylabel="predicted embedding val",
-    title="predicted vs. true embedding density"
-    # aspect=DataAspect() 
-)
-hexplot = hexbin!(ax_hex, all_trues, all_preds)
-Colorbar(fig_hex[1, 2], hexplot, label="point count")
-# display(fig_hex)
+begin
+    fig_hex = Figure(size = (800, 600))
+    ax_hex = Axis(fig_hex[1, 1],
+        # backgroundcolor = to_colormap(:viridis)[1], 
+        xlabel="true expression val",
+        ylabel="predicted expression val",
+        title="predicted vs. true expression density"
+        # aspect=DataAspect() 
+    )
+    hexplot = hexbin!(ax_hex, all_trues, all_preds, cellsize = (0.1,0.1), colorscale = log10)
+    text!(ax_hex, 0, 16, align = (:left, :top), text = "Pearson: $correlation")
+    Colorbar(fig_hex[1, 2], hexplot, label="point count (log10)")
+    display(fig_hex)
+end
 save(joinpath(save_dir, "hexbin.png"), fig_hex)
+
+# cs = corspearman(all_trues, all_preds)
 
 ### error by gene analysis
 absolute_errors = abs.(all_trues .- all_preds)
@@ -507,15 +520,60 @@ begin
     save(joinpath(save_dir, "sorted_gene_vs_meanerror.png"), fig_sort_error)
 end
 
+### to convert back into ranks for evaluation
+function convert_to_rank(values, ref)
+    combined = vcat(values, ref)
+    p = sortperm(combined, rev=true)
+    ranks = invperm(p)
+    return ranks[1]
+end
+
+reference_matrix = X_test 
+ranked_preds = similar(all_preds, Int)
+ranked_trues = similar(all_trues, Int)
+
+for i in 1:length(all_preds)
+    pred = all_preds[i]
+    true_val = all_trues[i]
+    col_idx = all_column_indices[i]
+    reference_col = reference_matrix[:, col_idx]
+    ranked_preds[i] = convert_to_rank(pred, reference_col)
+    ranked_trues[i] = convert_to_rank(true_val, reference_col)
+end
+
+# heatmap
+bin_edges = 1:979 
+h = fit(Histogram, (ranked_trues, ranked_preds), (bin_edges, bin_edges))
+
+fig_hm = Figure(size = (800, 700))
+ax_hm = Axis(fig_hm[1, 1],
+    xlabel = "true rank",
+    ylabel = "predicted rank"
+)
+
+log10_weights = log10.(h.weights .+ 1)
+hm = heatmap!(ax_hm, h.edges[1], h.edges[2], log10_weights)
+Colorbar(fig_hm[1, 2], hm, label = "count (log10)")
+display(fig_hm)
+save(joinpath(save_dir, "heatmap.png"), fig_hm)
+
 #######################################################################################################################################
 ### LOG
 #######################################################################################################################################
 
 # save model!!!
 model_cpu = cpu(model)
-jldsave(joinpath(save_dir, "model_object.jld2"); model=model_cpu) # whole model
-jldsave(joinpath(save_dir, "model_state.jld2"); model_state=Flux.state(model_cpu)) # need to recreate model + apply state to load back in
-
+model_state = Flux.state(model_cpu)
+jldsave(joinpath(save_dir, "model_state.jld2"); 
+    model_state=model_state
+)
+jldsave(joinpath(save_dir, "model_object.jld2"); 
+    model=model_cpu
+)
+jldsave(joinpath(save_dir, "indices.jld2"); 
+    train_indices=train_indices, 
+    test_indices=test_indices
+)
 jldsave(joinpath(save_dir, "losses.jld2"); 
     epochs = 1:n_epochs, 
     train_losses = train_losses, 
@@ -542,11 +600,10 @@ open(params_txt, "w") do io
     println(io, "masking_ratio = $mask_ratio")
     println(io, "mask_value = $mask_value")
     println(io, "batch_size = $batch_size")
-    println(io, "n_epochs = $n_epochs")
     println(io, "embed_dim = $embed_dim")
-    println(io, "hidden_dim = $hidden_dim")
-    println(io, "mid_dim = $mid_dim")
-    println(io, "latent_dim = $latent_dim")
+    println(io, "latent_1 = $latent_1")
+    println(io, "latent_2 = $latent_2")
+    println(io, "latent_3 = $latent_3")
     println(io, "learning_rate = $lr")
     # println(io, "dropout_probability = $drop_prob")
     println(io, "ADDITIONAL NOTES: $(additional_notes)")

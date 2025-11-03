@@ -1,0 +1,14 @@
+PARAMETERS:
+########### this was on kraken
+dataset = trt
+masking_ratio = 0.1
+mask_value = 0.0
+batch_size = 512
+embed_dim = 128
+latent_1 = 734
+latent_2 = 490
+latent_3 = 246
+learning_rate = 0.001
+ADDITIONAL NOTES: removed embedding layer, only AE with compression to 128, 3 layers each way
+run_time = 0 hours and 36 minutes
+correlation = 0.953018

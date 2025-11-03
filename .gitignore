@@ -1,3 +1,4 @@
 data/
 out/
+test/
 *.jld2
