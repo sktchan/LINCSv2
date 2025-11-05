@@ -14,17 +14,17 @@ CUDA.device!(0)
 ### INFO
 #######################################################################################################################################
 
-# untrt only
-# const data_path = "data/lincs_untrt_data.jld2"
-# const save_path_base = "untrt"
+# untrt only/
+const data_path = "data/lincs_untrt_data.jld2"
+const save_path_base = "untrt"
 
 # untrt and trt
-const data_path = "data/lincs_trt_untrt_data.jld2"
-const save_path_base = "trt"
+# const data_path = "data/lincs_trt_untrt_data.jld2"
+# const save_path_base = "trt"
 
 # params
 const batch_size = 128
-const n_epochs =30
+const n_epochs = 10
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
@@ -71,7 +71,6 @@ const MASK_ID = (n_classes + 1)
 const CLS_ID = n_genes + 2
 const CLS_VECTOR = fill(CLS_ID, (1, size(X, 2)))
 X = vcat(CLS_VECTOR, X)
-
 
 
 #######################################################################################################################################
@@ -353,7 +352,7 @@ for epoch in ProgressBar(1:n_epochs)
                 push!(epoch_rank_errors, error)
                 
                 if epoch == n_epochs
-                    original_rank = original_ranks_in_batch[i]
+                    original_rank = original_ranks_in_batch[i] - 1
                     push!(all_original_ranks, original_rank)
                     push!(all_prediction_errors, error)
                 end
