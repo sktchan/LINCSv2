@@ -28,15 +28,15 @@ const n_epochs = 10
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
-const n_layers = 4
+const n_layers = 1
 const drop_prob = 0.05
 const lr = 0.001
 const mask_ratio = 0.1
 
 # notes
 const gpu_info = "this was on smaug"
-const dataset_note = "trt"
-const additional_notes = "demo run 1ep with cls token"
+const dataset_note = "untrt"
+const additional_notes = "trying 1 layer with cls token in comparison to baseline"
 
 #######################################################################################################################################
 ### DATA
