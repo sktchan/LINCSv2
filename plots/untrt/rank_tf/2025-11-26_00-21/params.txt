@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on smaug
+dataset = untrt
+masking_ratio = 0.1
+NO DYNAMIC MASKING
+batch_size = 128
+n_epochs = 30
+embed_dim = 128
+hidden_dim = 256
+n_heads = 2
+n_layers = 4
+learning_rate = 0.001
+dropout_probability = 0.05
+ADDITIONAL NOTES: long run for cls baseline
+run_time = 11 hours and 44 minutes

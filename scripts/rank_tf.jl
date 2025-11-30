@@ -24,11 +24,11 @@ const save_path_base = "untrt"
 
 # params
 const batch_size = 128
-const n_epochs = 10
+const n_epochs = 30
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
-const n_layers = 1
+const n_layers = 4
 const drop_prob = 0.05
 const lr = 0.001
 const mask_ratio = 0.1
@@ -36,7 +36,7 @@ const mask_ratio = 0.1
 # notes
 const gpu_info = "this was on smaug"
 const dataset_note = "untrt"
-const additional_notes = "trying 1 layer with cls token in comparison to baseline"
+const additional_notes = "testing no posenc"
 
 #######################################################################################################################################
 ### DATA
@@ -87,16 +87,21 @@ struct PosEnc
     pe_matrix::CuArray{Float32,2}
 end
 
-function PosEnc(embed_dim::Int, max_len::Int) # max_len is usually maximum length of sequence but here it is just len(genes)
-    pe_matrix = Matrix{Float32}(undef, embed_dim, max_len)
-    for pos in 1:max_len, i in 1:embed_dim
-        angle = pos / (10000^(2*(div(i-1,2))/embed_dim))
-        if mod(i, 2) == 1
-            pe_matrix[i,pos] = sin(angle) # odd indices
-        else
-            pe_matrix[i,pos] = cos(angle) # even indices
-        end
-    end
+# function PosEnc(embed_dim::Int, max_len::Int) # max_len is usually maximum length of sequence but here it is just len(genes)
+#     pe_matrix = Matrix{Float32}(undef, embed_dim, max_len)
+#     for pos in 1:max_len, i in 1:embed_dim
+#         angle = pos / (10000^(2*(div(i-1,2))/embed_dim))
+#         if mod(i, 2) == 1
+#             pe_matrix[i,pos] = sin(angle) # odd indices
+#         else
+#             pe_matrix[i,pos] = cos(angle) # even indices
+#         end
+#     end
+#     return PosEnc(cu(pe_matrix))
+# end
+
+function PosEnc(embed_dim::Int, max_len::Int)
+    pe_matrix = zeros(Float32, embed_dim, max_len) 
     return PosEnc(cu(pe_matrix))
 end
 
