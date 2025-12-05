@@ -24,7 +24,7 @@ const save_path_base = "untrt"
 
 # params
 const batch_size = 128
-const n_epochs = 30
+const n_epochs = 100
 const embed_dim = 128
 const hidden_dim = 256
 const n_heads = 2
@@ -36,7 +36,7 @@ const mask_ratio = 0.1
 # notes
 const gpu_info = "this was on smaug"
 const dataset_note = "untrt"
-const additional_notes = "testing no posenc"
+const additional_notes = "normalizing exp by avg across dataset LONG RUN, for compare against without in untrt/rank_tf/2025-11-06_06-01"
 
 #######################################################################################################################################
 ### DATA
@@ -47,12 +47,15 @@ start_time = now()
 data = load(data_path)["filtered_data"]
 
 ### tokenization (row 1 is ranks of gene 1 in each sample)
-function sort_gene(expr)
+gene_medians = vec(median(data.expr, dims=2)) .+ 1e-10
+function sort_gene(expr, medians)
     n, m = size(expr)
     data_ranked = Matrix{Int}(undef, size(expr)) # faster than fill(-1, size(expr))
+    normalized_col = Vector{Float32}(undef, n) 
     sorted_ind_col = Vector{Int}(undef, n)
     for j in 1:m
         unsorted_expr_col = view(expr, :, j)
+        @. normalized_col = unsorted_expr_col / medians
         sortperm!(sorted_ind_col, unsorted_expr_col, rev=true)
             # rev=true -> data[1, :] = index (into gene.expr) of highest expression value in experiment/column 1
         for i in 1:n
@@ -62,7 +65,7 @@ function sort_gene(expr)
     return data_ranked
 end
 
-@time X = sort_gene(data.expr) # lookup table of indices from highest rank to lowest rank gene
+@time X = sort_gene(data.expr, gene_medians) # lookup table of indices from highest rank to lowest rank gene
 
 const n_features = size(X, 1) + 2
 const n_classes = size(X, 1)
@@ -87,23 +90,23 @@ struct PosEnc
     pe_matrix::CuArray{Float32,2}
 end
 
-# function PosEnc(embed_dim::Int, max_len::Int) # max_len is usually maximum length of sequence but here it is just len(genes)
-#     pe_matrix = Matrix{Float32}(undef, embed_dim, max_len)
-#     for pos in 1:max_len, i in 1:embed_dim
-#         angle = pos / (10000^(2*(div(i-1,2))/embed_dim))
-#         if mod(i, 2) == 1
-#             pe_matrix[i,pos] = sin(angle) # odd indices
-#         else
-#             pe_matrix[i,pos] = cos(angle) # even indices
-#         end
-#     end
-#     return PosEnc(cu(pe_matrix))
-# end
-
-function PosEnc(embed_dim::Int, max_len::Int)
-    pe_matrix = zeros(Float32, embed_dim, max_len) 
+function PosEnc(embed_dim::Int, max_len::Int) # max_len is usually maximum length of sequence but here it is just len(genes)
+    pe_matrix = Matrix{Float32}(undef, embed_dim, max_len)
+    for pos in 1:max_len, i in 1:embed_dim
+        angle = pos / (10000^(2*(div(i-1,2))/embed_dim))
+        if mod(i, 2) == 1
+            pe_matrix[i,pos] = sin(angle) # odd indices
+        else
+            pe_matrix[i,pos] = cos(angle) # even indices
+        end
+    end
     return PosEnc(cu(pe_matrix))
 end
+
+# function PosEnc(embed_dim::Int, max_len::Int)
+#     pe_matrix = zeros(Float32, embed_dim, max_len) 
+#     return PosEnc(cu(pe_matrix))
+# end
 
 Flux.@functor PosEnc
 

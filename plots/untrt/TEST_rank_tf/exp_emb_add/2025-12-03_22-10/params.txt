@@ -1,0 +1,16 @@
+PARAMETERS:
+########### this was on kraken
+dataset = untrt
+masking_ratio = 0.1
+NO DYNAMIC MASKING
+batch_size = 42
+n_epochs = 1
+embed_dim = 128
+hidden_dim = 256
+n_heads = 2
+n_layers = 4
+learning_rate = 0.001
+dropout_probability = 0.05
+n_bins = 51
+ADDITIONAL NOTES: trying to add binned exp embedding to token embedding as input, test run for compare against without in untrt/rank_tf/2025-11-06_06-01
+run_time = 0 hours and 32 minutes

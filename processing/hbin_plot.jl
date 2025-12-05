@@ -1,13 +1,15 @@
 using Pkg
 Pkg.activate("/home/golem/scratch/chans/lincs")
 
-using LincsProject, DataFrames, CSV, Dates, JSON, StatsBase, JLD2, SparseArrays, Dates, Printf, Profile
-using Flux, Random, OneHotArrays, CategoricalArrays, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra, MLUtils
+using JLD2, CairoMakie, StatsBase
 
-CUDA.device!(0)
+# using LincsProject, DataFrames, CSV, Dates, JSON, StatsBase, JLD2, SparseArrays, Dates, Printf, Profile
+# using Flux, Random, OneHotArrays, CategoricalArrays, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra, MLUtils
 
-all_trues = load("/home/golem/scratch/chans/lincsv2/plots/untrt/rank_tf/2025-11-05_13-56/predstrues.jld2")["all_trues"]
-all_preds = load("/home/golem/scratch/chans/lincsv2/plots/untrt/rank_tf/2025-11-05_13-56/predstrues.jld2")["all_preds"]
+# CUDA.device!(0)
+
+all_trues = load("/home/golem/scratch/chans/lincsv2/plots/untrt/rank_tf/2025-12-05_01-33/predstrues.jld2")["all_trues"]
+all_preds = load("/home/golem/scratch/chans/lincsv2/plots/untrt/rank_tf/2025-12-05_01-33/predstrues.jld2")["all_preds"]
 
 cs = corspearman(all_trues, all_preds)
 cp = cor(all_trues, all_preds)
@@ -27,7 +29,7 @@ begin
     Colorbar(fig_hex[1, 2], hexplot, label="point count (log10)")
     display(fig_hex)
 end
-save_dir = "/home/golem/scratch/chans/lincsv2/plots/trt/poster2025"
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/TEST_rank_tf/baseline"
 save(joinpath(save_dir, "exp_nn_hbin.png"), fig_hex)
 print(cs)
 
@@ -36,7 +38,7 @@ print(cs)
 # rank id
 
 # # to sort x axis
-sorted_indices_by_mean = load("/home/golem/scratch/chans/lincsv2/plots/trt/infographs/sorted_gene_indices_by_exp.jld2")["sorted_indices_by_mean"]
+sorted_indices_by_mean = load("/home/golem/scratch/chans/lincsv2/plots/untrt/infographs/sorted_gene_indices_by_exp.jld2")["sorted_indices_by_mean"]
 gene_id_to_rank_map = invperm(sorted_indices_by_mean);
 sorted_trues = gene_id_to_rank_map[all_trues];
 sorted_preds = gene_id_to_rank_map[all_preds];
@@ -44,7 +46,7 @@ sorted_preds = gene_id_to_rank_map[all_preds];
 bin_edges = 1:979 
 h = fit(Histogram, (sorted_trues, sorted_preds), (bin_edges, bin_edges))
 begin
-    fig_hm = Figure(size = (800, 600))
+    fig_hm = Figure(size = (500, 400))
     ax_hm = Axis(fig_hm[1, 1],
         xlabel = "true rank",
         ylabel = "predicted rank"
@@ -56,5 +58,5 @@ begin
     Colorbar(fig_hm[1, 2], hm, label = "count (log10)")
     display(fig_hm)
 end
-save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/rank_tf/2025-11-05_13-56"
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/TEST_rank_tf/normalized/2025-12-03_03-22"
 save(joinpath(save_dir, "heatmap.png"), fig_hm)

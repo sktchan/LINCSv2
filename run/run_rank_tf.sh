@@ -9,6 +9,6 @@
 #SBATCH --mem-per-gpu=32G
 
 #SBATCH --gres=gpu:V100:1
-#SBATCH --time=1-00:00:00
+#SBATCH --time=2-00:00:00
 
 julia /home/golem/scratch/chans/lincsv2/scripts/rank_tf.jl

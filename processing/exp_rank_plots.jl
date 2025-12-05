@@ -4,10 +4,11 @@ Pkg.activate("/home/golem/scratch/chans/lincs")
 using LincsProject, DataFrames, CSV, Dates, JSON, StatsBase, JLD2, SparseArrays, Dates, Printf, Profile
 using Flux, Random, OneHotArrays, CategoricalArrays, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra, MLUtils
 
-CUDA.device!(0)
+CUDA.device!(3)
 
-run_timestamp = "2025-11-26_00-21" 
-save_dir = "plots/untrt/rank_tf/$(run_timestamp)" 
+# run_timestamp = "2025-11-26_00-21" 
+# save_dir = "plots/untrt/rank_tf/$(run_timestamp)" 
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/TEST_rank_tf/baseline/2025-11-26_00-21"
 data_path = "data/lincs_untrt_data.jld2"
 
 struct PosEnc
@@ -272,14 +273,16 @@ save(joinpath(save_dir, "plot2n3_var_overlay.png"), fig3)
 df_ce = DataFrame(rank = ranks_list, loss = ce_loss_list)
 gdf_ce = combine(groupby(df_ce, :rank), :loss => mean => :mean_loss)
 sort!(gdf_ce, :rank)
+begin
+    fig4 = Figure(size = (800, 600))
+    ax4 = Axis(fig4[1, 1], 
+        xlabel = "true rank", 
+        ylabel = "cross entropy loss",
+        title = "cross entropy loss vs rank")
 
-fig4 = Figure(size = (800, 600))
-ax4 = Axis(fig4[1, 1], 
-    xlabel = "true rank", 
-    ylabel = "cross entropy loss",
-    title = "cross entropy loss vs rank")
-
-scatter!(ax4, ranks_list, ce_loss_list, alpha=0.5)
+    scatter!(ax4, ranks_list, ce_loss_list, alpha=0.5, markersize=3)
+    display(fig4)
+end
 save(joinpath(save_dir, "plot4_ce_loss_scatter.png"), fig4)
 
 # PLOT 5: matrix of sum of squared differences between positional encodings

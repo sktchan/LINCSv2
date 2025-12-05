@@ -8,12 +8,12 @@ Pkg.activate("/home/golem/scratch/chans/lincs")
 # using Infiltrator
 using LincsProject, DataFrames, CSV, Dates, JSON, StatsBase, JLD2, SparseArrays, Dates, Printf, Profile
 using Flux, Random, OneHotArrays, CategoricalArrays, ProgressBars, CUDA, Statistics, CairoMakie, LinearAlgebra
-CUDA.device!(0)
+CUDA.device!(2)
 
 start_time = now()
 
-# data = load("data/lincs_untrt_data.jld2")["filtered_data"] # untrt only
-data = load("data/lincs_trt_untrt_data.jld2")["filtered_data"] # trt and untrt data
+data = load("data/lincs_untrt_data.jld2")["filtered_data"] # untrt only
+# data = load("data/lincs_trt_untrt_data.jld2")["filtered_data"] # trt and untrt data
 
 ### tokenization (row 1 is ranks of gene 1 in each sample)
 
@@ -71,7 +71,7 @@ begin
     display(fig)
 end
 
-save_dir = "/home/golem/scratch/chans/lincs/plots/trt_and_untrt/entropies"
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/infographs/"
 save(joinpath(save_dir, "rank_entropy_trt.png"), fig)
 
 #######################################################################################################################################
@@ -190,7 +190,7 @@ begin
     display(fig_ex_std) 
 end
 
-save_dir = "/home/golem/scratch/chans/lincs/plots/trt_and_untrt/infographs"
+save_dir = "/home/golem/scratch/chans/lincsv2/plots/untrt/infographs"
 save(joinpath(save_dir, "gene_exp_std_dev_trt.png"), fig_ex_std)
 
 
@@ -215,7 +215,7 @@ end
 save(joinpath(save_dir, "gene_mean_exp_trt.png"), fig_mean_expr)
 
 sorted_indices_by_mean = sortperm(gene_means, rev=true)
-jldsave("/home/golem/scratch/chans/lincs/plots/trt_and_untrt/infographs/sorted_gene_indices_by_exp.jld2"; sorted_indices_by_mean)
+jldsave("/home/golem/scratch/chans/lincsv2/plots/untrt/infographs/sorted_gene_indices_by_exp.jld2"; sorted_indices_by_mean)
 
 begin
     fig_mean_sorted = Figure(size = (800, 600))

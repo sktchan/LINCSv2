@@ -1,0 +1,15 @@
+PARAMETERS:
+########### this was on smaug
+dataset = untrt
+masking_ratio = 0.1
+NO DYNAMIC MASKING
+batch_size = 128
+n_epochs = 1
+embed_dim = 128
+hidden_dim = 256
+n_heads = 2
+n_layers = 4
+learning_rate = 0.001
+dropout_probability = 0.05
+ADDITIONAL NOTES: learned posenc instead of sin, test run 1ep for compare against without in untrt/rank_tf/2025-11-06_06-01
+run_time = 0 hours and 22 minutes
